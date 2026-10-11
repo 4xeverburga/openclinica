@@ -21,7 +21,7 @@ pristine upstream mirror (only `UPSTREAM.md` + this `AGENTS.md`):
 cd /home/ever/Documents/Me/Work/2026/Kyndryl/Tinka/DemoModernizacion/jsp-decouple-bench/environments/openclinica
 ./scripts/setup-e2e.sh          # idempotent: container + DB + Tomcat + admin credential
 # app: http://localhost:8089/OpenClinica/
-# login: root / (password in .env — gitignored, in the bench env dir)
+# login: root / (password in .env — tracked in the bench env dir)
 ```
 
 Manual build (only needed after code changes):
@@ -48,13 +48,15 @@ Gotchas baked into that command (all verified):
 - Liquibase auto-creates the schema at startup (~122 tables) via
   `applicationContext-core-db.xml` → `classpath:migration/master.xml`.
 
-## 2. Admin credentials (gitignored, bench-side)
+## 2. Admin credentials (tracked, bench-side)
 
 - **Upstream seeds `root` / `12345678`** (MD5) in the tracked Liquibase changelog
   `core/src/main/resources/migration/2.5/changeLogDataInsert.xml`. That seed is public
   upstream knowledge — it is NOT a secret and cannot be removed without patching upstream.
-- The **real** credential lives in `environments/openclinica/.env` in the bench repo
-  (**gitignored**; template: `.env.example` next to it).
+- The **bench** credential lives in `environments/openclinica/.env` in the bench repo
+  (**tracked** — a synthetic, deterministic bench credential so every researcher
+  gets an identical environment; template: `.env.example` next to it. Real
+  secrets must never go into a tracked `.env`).
   `environments/openclinica/scripts/bootstrap-admin.sh` applies it: sets `root`'s
   password to unsalted SHA-1 hex (the app's current encoder) and resets
   `passwd_timestamp` to today (the seed's 2006 timestamp otherwise forces a
@@ -73,7 +75,7 @@ All scripts live in `../jsp-decouple-bench/environments/openclinica/scripts/`.
 |---|---|---|---|
 | `scripts/setup-e2e.sh` | **No** — idempotent | Starts container/DB/Tomcat only if missing, creates DB only if absent, applies bootstrap, verifies admin login. Auto-generates `.env` on a fresh checkout. | **Before every e2e suite run.** |
 | Regular e2e tests (yours) | **No** | Run against the live, already-bootstrapped app; read the password from `.env`; clean up the entities they create. | Per suite. |
-| `scripts/test-admin-from-scratch.sh` | **YES — drops the `openclinica` database and restarts Tomcat** | Proves the full credential lifecycle on a fresh DB: seed authenticates (and forces reset) → bootstrap rotates → seed rejected → gitignored password logs in. | Opt-in only: after credential/bootstrap changes, or to reset a polluted DB. Anything you created in the app is lost. |
+| `scripts/test-admin-from-scratch.sh` | **YES — drops the `openclinica` database and restarts Tomcat** | Proves the full credential lifecycle on a fresh DB: seed authenticates (and forces reset) → bootstrap rotates → seed rejected → tracked bench password logs in. | Opt-in only: after credential/bootstrap changes, or to reset a polluted DB. Anything you created in the app is lost. |
 
 **Contract for e2e tests:** never drop/recreate the database, never restart Tomcat,
 never hardcode passwords — source `local-admin.properties`. If a test needs clean
