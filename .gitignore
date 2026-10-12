@@ -27,3 +27,6 @@ ws/.DS_Store
 
 # netbeans
 nb-configuration.xml
+
+# local build artifacts
+catalina.home_IS_UNDEFINED/
