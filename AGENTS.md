@@ -1,8 +1,7 @@
 # AGENTS — running OpenClinica here
 
 OpenClinica Community 3.18-SNAPSHOT: JSP / Spring 3.2 / Java 7, a Maven
-multi-module build (`core`, `web`, `ws`). Upstream:
-https://github.com/OpenClinica/OpenClinica (LGPL, see `UPSTREAM.md`).
+multi-module build (`core`, `web`, `ws`).
 
 The toolchain is installed already: `JAVA_HOME` is **JDK 8** (Java 7
 source/target does not compile on JDK 9+), `mvn`, `java`, `javac`, `jar` and
@@ -21,7 +20,7 @@ mvn -B -DskipTests \
   package
 ```
 
-The root pom's `<filters>` block is **commented out upstream**, so every
+The root pom's `<filters>` block is **commented out in the sources**, so every
 `${...}` placeholder in `datainfo.properties` resolves from `-D` system
 properties at build time. That is why the block above passes all of them:
 
@@ -90,7 +89,7 @@ Two values matter most while developing:
 
 Liquibase seeds one account, user name `root`, from the tracked changelog
 `core/src/main/resources/migration/2.5/changeLogDataInsert.xml` (its password
-is the upstream MD5 hash of the published default).
+is the MD5 of the published default).
 
 Two quirks follow from that seed:
 
@@ -118,9 +117,9 @@ never arrives locally.
 - **Java 8 only.** A newer JDK fails the compiler before it reaches the app.
 - **The webapp name is the context.** Deployed as anything but
   `OpenClinica.war`, every link 404s.
-- **The login and home pages fetch a live RSS feed** from openclinica.com.
-  Cosmetic and it degrades gracefully, but it makes `domcontentloaded` slow —
-  expect timeouts in a browser automation that waits for it.
+- **The login and home pages fetch a live RSS feed** from the project's public
+  blog. Cosmetic and it degrades gracefully, but it makes `domcontentloaded`
+  slow — expect timeouts in a browser automation that waits for it.
 - **Keep-alive stalls.** The app occasionally pauses for a few seconds when a
   connection is reused; a reload recovers it.
 - `core/catalina.home_IS_UNDEFINED/` is residue from a build that ran without
