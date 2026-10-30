@@ -1,5 +1,6 @@
-# Build context hygiene: everything here is generated locally and must not
-# reach an image or a diff.
+# Build context hygiene: everything here is generated locally or is
+# version-control metadata, and neither may reach an image.
+.git/
 target/
 **/target/
 catalina.home_IS_UNDEFINED/
