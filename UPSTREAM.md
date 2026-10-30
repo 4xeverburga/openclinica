@@ -1,7 +1,7 @@
 # Upstream provenance
 
 This repository is a **shallow mirror** of an open-source project, kept for internal
-migration / modernization demos and dataset building. It is **not** affiliated with,
+migration / modernization work. It is **not** affiliated with,
 endorsed by, or maintained by the original authors.
 
 | | |
@@ -10,7 +10,7 @@ endorsed by, or maintained by the original authors.
 | Commit | `69cccaf` (2024-06-10) |
 | License | GNU LGPL — stated in [`README.md`](README.md) (note: the upstream repo contains **no `LICENSE` file**) |
 | Clone depth | 1 (upstream history is truncated) |
-| Local changes | added this `UPSTREAM.md` only |
+| Local changes | added `UPSTREAM.md` and `AGENTS.md`; no application source is modified |
 
 ## About the project
 

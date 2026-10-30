@@ -1,96 +1,131 @@
-# AGENTS — Running OpenClinica locally + test policy
+# AGENTS — running OpenClinica here
 
-OpenClinica Community 3.18-SNAPSHOT (JSP / Spring 3.2 / Java 7, Maven multi-module
-`core`/`web`/`ws`). Upstream: https://github.com/OpenClinica/OpenClinica (LGPL, see
-`UPSTREAM.md`). This repo is a HEAD-only shallow mirror.
+OpenClinica Community 3.18-SNAPSHOT: JSP / Spring 3.2 / Java 7, a Maven
+multi-module build (`core`, `web`, `ws`). Upstream:
+https://github.com/OpenClinica/OpenClinica (LGPL, see `UPSTREAM.md`).
 
-## 0. Prerequisites
+The toolchain is installed already: `JAVA_HOME` is **JDK 8** (Java 7
+source/target does not compile on JDK 9+), `mvn`, `java`, `javac`, `jar` and
+`psql` are on the path, and Tomcat 9 lives at `$CATALINA_HOME`.
 
-| Thing | Path / command | Notes |
-|---|---|---|
-| **JDK 8** (mandatory) | `/usr/lib/jvm/jdk-8.0.202-oracle-x64` | Java 7 source/target; never inherit shell `JAVA_HOME` (machine default is JDK 21). |
-| **PostgreSQL 9.6** | podman container `openclinica-pg`, port **5433** | 9.6 pinned: the 2011 driver `postgresql:9.1-901-1.jdbc4` cannot do SCRAM (PG 10+). Local system PG needs sudo — don't use it. |
-| **Tomcat 9** | `/home/ever/tools/apache-tomcat-oc` | Dedicated instance, ports 8089 (HTTP) / 8105 / 8109. 8080 = lotto Tomcat, 8088 = Mamute. |
+---
 
-## 1. Quick start (or just run the setup script)
-
-Harness scripts live in the bench repo, NOT here — this repo stays a
-pristine upstream mirror (only `UPSTREAM.md` + this `AGENTS.md`):
+## 1. Build
 
 ```bash
-cd /home/ever/Documents/Me/Work/2026/Kyndryl/Tinka/DemoModernizacion/jsp-decouple-bench/environments/openclinica
-./scripts/setup-e2e.sh          # idempotent: container + DB + Tomcat + admin credential
-# app: http://localhost:8089/OpenClinica/
-# login: root / (password in .env — tracked in the bench env dir)
-```
-
-Manual build (only needed after code changes):
-
-```bash
-JAVA_HOME=/usr/lib/jvm/jdk-8.0.202-oracle-x64 mvn -B -q -DskipTests \
-  -DdbType=postgres -DdbUser=clinica -DdbPass=clinica -Ddb=openclinica -DdbPort=5433 -DdbHost=127.0.0.1 \
+mvn -B -DskipTests \
+  -DdbType=postgres -DdbUser=clinica -DdbPass=clinica \
+  -Ddb=openclinica -DdbPort=5432 -DdbHost=db \
   -DWEBAPP=OpenClinica -DWEBAPP.lower=openclinica \
-  -Dcatalina.home=/home/ever/tools/apache-tomcat-oc \
+  -Dcatalina.home="$CATALINA_HOME" \
   package
-cp web/target/OpenClinica-web-3.18-SNAPSHOT.war /home/ever/tools/apache-tomcat-oc/webapps/OpenClinica.war
 ```
 
-Gotchas baked into that command (all verified):
-- The root pom's `<filters>` block is **commented out upstream** — every `${...}` in
-  `datainfo.properties` resolves from `-D` system properties at build time.
-- `sysURL` is hardcoded to port 8080 in `web/src/main/resources/datainfo.properties`;
-  sed it to 8089 before building, `git restore` after (the WAR keeps the patched value).
-- The WAR **must** be deployed as `OpenClinica.war` — the app derives its webapp name
-  from the deployed directory name.
-- The classpath `datainfo.properties` inside the WAR is the primary config (Spring
-  `util:properties` reads it directly); the external `$CATALINA_HOME/openclinica.config/`
-  copy is only a partial override — don't rely on it.
-- Liquibase auto-creates the schema at startup (~122 tables) via
-  `applicationContext-core-db.xml` → `classpath:migration/master.xml`.
+The root pom's `<filters>` block is **commented out upstream**, so every
+`${...}` placeholder in `datainfo.properties` resolves from `-D` system
+properties at build time. That is why the block above passes all of them:
 
-## 2. Admin credentials (tracked, bench-side)
+- `dbType`, `dbUser`, `dbPass`, `db`, `dbPort`, `dbHost` — the JDBC settings;
+- `WEBAPP` / `WEBAPP.lower` — the context name, used by `sysURL` and friends;
+- `catalina.home` — `log.dir` is built from it.
 
-- **Upstream seeds `root` / `12345678`** (MD5) in the tracked Liquibase changelog
-  `core/src/main/resources/migration/2.5/changeLogDataInsert.xml`. That seed is public
-  upstream knowledge — it is NOT a secret and cannot be removed without patching upstream.
-- The **bench** credential lives in `environments/openclinica/.env` in the bench repo
-  (**tracked** — a synthetic, deterministic bench credential so every researcher
-  gets an identical environment; template: `.env.example` next to it. Real
-  secrets must never go into a tracked `.env`).
-  `environments/openclinica/scripts/bootstrap-admin.sh` applies it: sets `root`'s
-  password to unsalted SHA-1 hex (the app's current encoder) and resets
-  `passwd_timestamp` to today (the seed's 2006 timestamp otherwise forces a
-  reset-password page on first login).
-- **Run `bootstrap-admin.sh` after every fresh database** (new container = seed returns).
-  It is idempotent — safe to run anytime.
-- Password hashing: `OpenClinicaPasswordEncoder` = SHA-1 (current) + MD5 (legacy
-  fallback), both unsalted. New accounts created via the UI get a random 8-char
-  password emailed in plaintext (`mailHost` is a placeholder → mail won't deliver locally).
+The WAR is `web/target/OpenClinica-web-3.18-SNAPSHOT.war`. Deploy it as
+**`OpenClinica.war`**: the app derives its webapp name (and therefore its
+context path) from the deployed directory name, so the context must be
+`/OpenClinica`.
 
-## 3. Test taxonomy — READ BEFORE RUNNING (destructiveness disclosed)
+`mvn -B -o …` works offline once the dependencies are in `~/.m2`.
 
-All scripts live in `../jsp-decouple-bench/environments/openclinica/scripts/`.
+## 2. The database
 
-| Script | Destructive? | What it does | When to run |
-|---|---|---|---|
-| `scripts/setup-e2e.sh` | **No** — idempotent | Starts container/DB/Tomcat only if missing, creates DB only if absent, applies bootstrap, verifies admin login. Auto-generates `.env` on a fresh checkout. | **Before every e2e suite run.** |
-| Regular e2e tests (yours) | **No** | Run against the live, already-bootstrapped app; read the password from `.env`; clean up the entities they create. | Per suite. |
-| `scripts/test-admin-from-scratch.sh` | **YES — drops the `openclinica` database and restarts Tomcat** | Proves the full credential lifecycle on a fresh DB: seed authenticates (and forces reset) → bootstrap rotates → seed rejected → tracked bench password logs in. | Opt-in only: after credential/bootstrap changes, or to reset a polluted DB. Anything you created in the app is lost. |
+PostgreSQL 9.6 at host `db`, port 5432, user `clinica`, password `clinica`,
+database `openclinica`.
 
-**Contract for e2e tests:** never drop/recreate the database, never restart Tomcat,
-never hardcode passwords — source `local-admin.properties`. If a test needs clean
-state, delete what it created (targeted cleanup), or ask the human to run the
-destructive from-scratch script.
+9.6 is not a preference: the driver this pom pins
+(`postgresql:9.1-901-1.jdbc4`) predates SCRAM, which every server from 10 on
+defaults to.
 
-## 4. Logs & ports
+**The app creates its own schema.** Liquibase runs at startup
+(`applicationContext-core-db.xml` → `classpath:migration/master.xml`, ~983
+changesets, ~122 tables) and seeds the reference data as it goes. Do not build
+tables by hand; drop and recreate the database if you need a clean seed.
 
-| What | Where |
-|---|---|
-| App | `http://localhost:8089/OpenClinica/` |
-| Tomcat log | `/home/ever/tools/apache-tomcat-oc/logs/catalina.out` |
-| PostgreSQL | `podman exec openclinica-pg psql -U clinica -d openclinica` |
-| Data dir | `/home/ever/tools/apache-tomcat-oc/openclinica.data/` |
+`psql` is available:
 
-Known quirks: the login/home pages fetch a live RSS feed from openclinica.com
-(cosmetic, degrades gracefully); the app intermittently stalls a few seconds on
-keep-alive reuse — a reload recovers it.
+```bash
+psql -h db -U clinica -d openclinica -c '\dt'
+```
+
+## 3. Run
+
+```bash
+mkdir -p "$CATALINA_HOME/webapps/OpenClinica"
+(cd "$CATALINA_HOME/webapps/OpenClinica" && jar xf /path/to/OpenClinica.war)
+"$CATALINA_HOME/bin/catalina.sh" run
+```
+
+The app answers on `http://localhost:8080/OpenClinica/` and redirects to
+`/OpenClinica/pages/login/login`. Logs go to `$CATALINA_HOME/logs/catalina.out`
+(and `$CATALINA_HOME/logs/openclinica/` for the app's own).
+
+Explode the WAR yourself when you need to change the configuration: Tomcat
+would otherwise explode it on start, after the properties were already read.
+
+## 4. The config the app reads
+
+`WEB-INF/classes/datainfo.properties` inside the deployed webapp is the primary
+configuration — Spring's `util:properties` reads it from the classpath. A copy
+under `$CATALINA_HOME/openclinica.config/` only overrides a few `CoreResources`
+keys; do not rely on it.
+
+Two values matter most while developing:
+
+- `dbHost` / `db` / `dbUser` / `dbPass` / `dbPort` — where the data lives;
+- `sysURL` — the absolute base the app builds links from. It must match the
+  address you actually serve on, or redirects and callback URLs point at the
+  wrong port. A build made with the flags above sets it to
+  `http://localhost:8080/OpenClinica/MainMenu`.
+
+## 5. The seeded account
+
+Liquibase seeds one account, user name `root`, from the tracked changelog
+`core/src/main/resources/migration/2.5/changeLogDataInsert.xml` (its password
+is the upstream MD5 hash of the published default).
+
+Two quirks follow from that seed:
+
+- the stored `passwd_timestamp` is from 2006, so the app forces a
+  reset-password page on the first login;
+- the encoder is `ShaPasswordEncoder` (unsalted SHA-1) for current passwords,
+  with MD5 kept as a legacy fallback — `OpenClinicaPasswordEncoder` tries both.
+
+To use the account without the reset page, store a fresh SHA-1 and stamp it
+today:
+
+```bash
+SHA="$(printf '%s' '<password>' | sha1sum | cut -d' ' -f1)"
+psql -h db -U clinica -d openclinica -c \
+  "UPDATE user_account SET passwd = '$SHA', passwd_timestamp = current_date \
+   WHERE user_name = 'root'"
+```
+
+New accounts created through the UI get a random 8-character password emailed in
+plaintext; `mailHost` in `datainfo.properties` is a placeholder, so that mail
+never arrives locally.
+
+## 6. Quirks worth knowing
+
+- **Java 8 only.** A newer JDK fails the compiler before it reaches the app.
+- **The webapp name is the context.** Deployed as anything but
+  `OpenClinica.war`, every link 404s.
+- **The login and home pages fetch a live RSS feed** from openclinica.com.
+  Cosmetic and it degrades gracefully, but it makes `domcontentloaded` slow —
+  expect timeouts in a browser automation that waits for it.
+- **Keep-alive stalls.** The app occasionally pauses for a few seconds when a
+  connection is reused; a reload recovers it.
+- `core/catalina.home_IS_UNDEFINED/` is residue from a build that ran without
+  `-Dcatalina.home` (logback wrote logs relative). Build outputs (`target/`,
+  `catalina.home_IS_UNDEFINED/`) are ignored: they do not survive a fresh
+  clone and are not part of the code.
+- `mvn test` runs the unit tests. There is no browser automation in the
+  repository.

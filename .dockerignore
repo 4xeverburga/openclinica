@@ -1,0 +1,7 @@
+# Build context hygiene: everything here is generated locally and must not
+# reach an image or a diff.
+target/
+**/target/
+catalina.home_IS_UNDEFINED/
+**/*.log
+logs/
